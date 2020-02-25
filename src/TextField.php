@@ -20,7 +20,7 @@ class TextField extends Element {
         $rowData = is_array($obj) ? $obj[1] : null;
         $data = $this->objElement;
         $obj = is_array($obj) ? $obj[0] : $obj;
-        $text = $this->objElement->textFieldExpression;
+        $text = (string) $this->objElement->textFieldExpression;
         $arrayText = explode("+", $text);
         $align = "L";
         $fill = 0;
@@ -157,13 +157,13 @@ class TextField extends Element {
         }
 
 
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetXY",
             "x" => $data->reportElement["x"] + 0,
             "y" => $data->reportElement["y"] + 0,
             "hidden_type" => "SetXY"
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetTextColor",
             "forecolor" => $data->reportElement["forecolor"],
             "r" => $textcolor["r"],
@@ -171,14 +171,14 @@ class TextField extends Element {
             "b" => $textcolor["b"],
             "hidden_type" => "textcolor"
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetDrawColor",
             "r" => $drawcolor["r"],
             "g" => $drawcolor["g"],
             "b" => $drawcolor["b"],
             "hidden_type" => "drawcolor"
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetFillColor",
             "backcolor" => $data->reportElement["backcolor"] . "",
             "r" => $fillcolor["r"],
@@ -187,7 +187,7 @@ class TextField extends Element {
             "hidden_type" => "fillcolor",
             "fill" => $fill
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetFont",
             "font" => $font . "",
             "pdfFontName" => $data->textElement->font["pdfFontName"] . "",
@@ -208,13 +208,13 @@ class TextField extends Element {
                 $text = date("Y-m-d H:i:s");
                 break;
             case '"Page "+$V{PAGE_NUMBER}+" of"':
-                $text = 'Page ' . JasperPHP\Pdf::getPageNo() . ' of';
+                $text = 'Page ' . JasperPHP\Instructions::getPageNo() . ' of';
                 break;
             case '$V{PAGE_NUMBER}':
-                if (isset($data["evaluationTime"]) && $data["evaluationTime"] == "Report" && !isset($rowData['counter'])) {
+                if (!isset($rowData['counter'])) {
                     $text = '{:ptp:}';
                 } else {
-                    $text = '';
+                    $text = JasperPHP\Instructions::getPageNo();
                 }
                 break;
             case '" " + $V{PAGE_NUMBER}':
@@ -222,29 +222,30 @@ class TextField extends Element {
                 break;
 
             case '$V{CURRENT_PAGE_NUMBER}':
-                $text = $rowData['counter'] == true ? JasperPHP\Pdf::getPageNo() : '';
+                $text = $rowData['counter'] == true ? JasperPHP\Instructions::getPageNo() : '';
                 break;
 
             default:
-                preg_match_all("/P{(\w+)}/", $text, $matchesP);
-                if ($matchesP) {
-                    foreach ($matchesP[1] as $macthP) {
-                        $text = str_ireplace(array('$P{' . $macthP . '}'), array(($obj->arrayParameter[$macthP])), $text);
-                    }
-                }
-                preg_match_all("/V{(\w+)}/", $text, $matchesV);
-                if ($matchesV) {
-                    foreach ($matchesV[1] as $macthV) {
-                        $text = $obj->getValOfVariable($macthV, $text);
-                    }
-                }
-                preg_match_all("/F{[^}]*}/", $text, $matchesF);
-                if ($matchesF) {
-                    foreach ($matchesF[0] as $macthF) {
-                        $macth = str_ireplace(array("F{", "}"), "", $macthF);
-                        $text = $obj->getValOfField($macth, $rowData, $text, $writeHTML);
-                    }
-                }
+                $text = $obj->get_expression($text,$rowData,$writeHTML);
+//                preg_match_all("/P{(\w+)}/", $text, $matchesP);
+//                if ($matchesP) {
+//                    foreach ($matchesP[1] as $macthP) {
+//                        $text = str_ireplace(array('$P{' . $macthP . '}'), array(($obj->arrayParameter[$macthP])), $text);
+//                    }
+//                }
+//                preg_match_all("/V{(\w+)}/", $text, $matchesV);
+//                if ($matchesV) {
+//                    foreach ($matchesV[1] as $macthV) {
+//                        $text = $obj->getValOfVariable($macthV, $text);
+//                    }
+//                }
+//                preg_match_all("/F{[^}]*}/", $text, $matchesF);
+//                if ($matchesF) {
+//                    foreach ($matchesF[0] as $macthF) {
+//                        $macth = str_ireplace(array("F{", "}"), "", $macthF);
+//                        $text = $obj->getValOfField($macth, $rowData, $text, $writeHTML);
+//                    }
+//                }
 
                 break;
         }
@@ -262,25 +263,8 @@ class TextField extends Element {
         if ($printoverflow == "true") {
             $text = str_ireplace(array('+', '+', '"'), array('', '', ''), $text);
         }
-        $printWhenExpression = $data->reportElement->printWhenExpression;
-        preg_match_all("/P{(\w+)}/", $printWhenExpression, $matchesP);
-        preg_match_all("/F{(\w+)}/", $printWhenExpression, $matchesF);
-        preg_match_all("/V{(\w+)}/", $printWhenExpression, $matchesV);
-        if ($matchesP > 0) {
-            foreach ($matchesP[1] as $macthP) {
-                $printWhenExpression = str_ireplace(array('$P{' . $macthP . '}', '"'), array($obj->arrayParameter[$macthP], ''), $printWhenExpression);
-            }
-        }if ($matchesF > 0) {
-            foreach ($matchesF[1] as $macthF) {
-                $printWhenExpression = $obj->getValOfField($macthF, $rowData, $printWhenExpression);
-            }
-        }
-        if ($matchesV > 0) {
-            foreach ($matchesV[1] as $macthV) {
-                $printWhenExpression = $obj->getValOfVariable($macthV, $printWhenExpression);
-            }
-        }
-        JasperPHP\Pdf::addInstruction(array("type" => "MultiCell", "width" => $data->reportElement["width"] + 0, "height" => $height + 0, "txt" => $text . "",
+        $printWhenExpression = $obj->get_expression($data->reportElement->printWhenExpression, $rowData);
+        JasperPHP\Instructions::addInstruction(array("type" => "MultiCell", "width" => $data->reportElement["width"] + 0, "height" => $height + 0, "txt" => $text . "",
             "border" => $border, "align" => $align, "fill" => $fill,
             "hidden_type" => "field", "soverflow" => $stretchoverflow, "poverflow" => $printoverflow,
             "printWhenExpression" => $printWhenExpression . "",

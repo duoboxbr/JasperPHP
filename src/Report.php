@@ -3,8 +3,8 @@
 namespace JasperPHP;
 
 use JasperPHP;
-//use JasperPHP\ado\TTransaction;
-use TTransaction;
+use JasperPHP\ado\TTransaction;
+//use TTransaction;
 
 /**
  * classe Report
@@ -20,31 +20,34 @@ use TTransaction;
 class Report extends Element {
 
     public static $defaultFolder = 'app.jrxml';
+    public static $locale = 'en_us';
     public $dbData;
     public $arrayVariable;
     public $arrayfield;
     public $arrayParameter;
     public $arrayPageSetting;
+    public $arrayGroup;
     public $sql;
     public $print_expression_result;
     public $returnedValues = array();
     public $objElement;
     public $rowData;
 
-
-    public function __construct($xmlFile = null,$param) {
-        if(file_exists(self::$defaultFolder.DIRECTORY_SEPARATOR.$xmlFile)) {
-            $xmlFile = file_get_contents(self::$defaultFolder.DIRECTORY_SEPARATOR.$xmlFile);
+    public function __construct($xmlFile = null, $param) {
+        if (file_exists(self::$defaultFolder . DIRECTORY_SEPARATOR . $xmlFile)) {
+            $xmlFile = file_get_contents(self::$defaultFolder . DIRECTORY_SEPARATOR . $xmlFile);
+        } elseif (file_exists($xmlFile)) {
+            $xmlFile = file_get_contents($xmlFile);
         }
         $keyword = "<queryString>
         <![CDATA[";
         $xmlFile = str_replace($keyword, "<queryString><![CDATA[", $xmlFile);
         $xml = simplexml_load_string($xmlFile);
-        $this->charge($xml,$param);
+        $this->charge($xml, $param);
         //$this->objElement = $xml;
     }
 
-    public function charge($ObjElement,$param) {
+    public function charge($ObjElement, $param) {
 
         $this->name = get_class($this);
         $this->objElement = $ObjElement;
@@ -69,6 +72,7 @@ class Report extends Element {
         $this->variable_handler($ObjElement);
         $this->page_setting($ObjElement);
         $this->queryString_handler($ObjElement);
+        $this->group_handler($ObjElement);
     }
 
     public function getDbData() {
@@ -140,6 +144,16 @@ class Report extends Element {
                 "initialValue" => (string) $variable->initialValueExpression . "",
                 "incrementType" => $variable['incrementType']
             );
+        }
+    }
+
+    public function group_handler($xml_path) {
+        $this->arrayGroup = array();
+        foreach ($xml_path->group as $group) {
+
+            $groupName = (string) $group["name"];
+            $this->arrayGroup[$groupName] = $group;
+            $group->addAttribute('resetVariables', 'false');
         }
     }
 
@@ -217,6 +231,33 @@ class Report extends Element {
         }
     }
 
+    public function get_expression($text, $row, $writeHTML = null) {
+        preg_match_all("/P{(\w+)}/", $text, $matchesP);
+        if ($matchesP) {
+            foreach ($matchesP[1] as $macthP) {
+                $text = str_ireplace(array('$P{' . $macthP . '}', '"'), array($this->arrayParameter[$macthP], ''), $text);
+            }
+        }
+
+        preg_match_all("/V{(\w+)}/", $text, $matchesV);
+        if ($matchesV) {
+            foreach ($matchesV[1] as $macthV) {
+                $text = $this->getValOfVariable($macthV, $text, $writeHTML);
+            }
+        }
+        
+        preg_match_all("/F{[^}]*}/", $text, $matchesF);
+        if ($matchesF) {
+            //var_dump($matchesF);
+            foreach ($matchesF[0] as $macthF) {
+                $macth = str_ireplace(array("F{", "}"), "", $macthF);
+                $text = $this->getValOfField($macth, $row, $text, $writeHTML);
+            }
+        }
+
+        return $text;
+    }
+
     public function getValOfVariable($variable, $text) {
         $val = array_key_exists($variable, $this->arrayVariable) ? $this->arrayVariable[$variable] : array();
         $ans = array_key_exists('ans', $val) ? $val['ans'] : '';
@@ -236,7 +277,7 @@ class Report extends Element {
         } elseif ($variable == "MASTER_TOTAL_PAGES") {
             return str_ireplace(array('$V{MASTER_TOTAL_PAGES}'), array('{:ptp:}'), $text);
         } elseif ($variable == "PAGE_NUMBER" || $variable == "MASTER_CURRENT_PAGE") {
-            return str_ireplace(array('$V{' . $variable . '}'), array(JasperPHP\Pdf::getPageNo()), $text);
+            return str_ireplace(array('$V{' . $variable . '}'), array(JasperPHP\Instructions::getPageNo()), $text);
         } else {
             return str_ireplace(array('$V{' . $variable . '}'), array($ans), $text);
         }
@@ -246,7 +287,8 @@ class Report extends Element {
         error_reporting(0);
         $fieldParts = strpos($field, "->") ? explode("->", $field) : explode("-&gt;", $field);
         $obj = $row;
-        
+        //var_dump($fieldParts);
+        // exit;
         foreach ($fieldParts as $part) {
             if (preg_match_all("/\w+/", $part, $matArray)) {
                 if (count($matArray[0]) > 1) {
@@ -259,7 +301,7 @@ class Report extends Element {
                 }
             }
         }
-        
+
         $val = $obj;
         error_reporting(5);
         $fieldRegExp = str_ireplace("[", "\[", $field);
@@ -320,96 +362,25 @@ class Report extends Element {
 
         $value = (array_key_exists('ans', $this->arrayVariable[$k])) ? $this->arrayVariable[$k]["ans"] : null;
         $newValue = (isset($mathValue)) ? $mathValue : $out['target'];
-        //   echo $out['resetType']. "<br/><br/>";
         switch ($out["calculation"]) {
             case "Sum":
-                $resetType = (array_key_exists('resetType', $out)) ? $out['resetType'] : '';
-                if ($resetType == '' || $resetType == 'None') {
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        //    foreach($this->arraysqltable as $table) {
-                        $value = $this->time_to_sec($value);
+                if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
+                    $value = $this->time_to_sec($value);
 
-                        $value += $this->time_to_sec($newValue);
-                        //$sum=$sum+mb_substr($table["$out[target]"],0,2)*3600+mb_substr($table["$out[target]"],3,2)*60+mb_substr($table["$out[target]"],6,2);
-                        // }
-                        //$sum= floor($sum / 3600).":".floor($sum%3600 / 60);
-                        //if($sum=="0:0"){$sum="00:00";}
-                        $value = $this->sec_to_time($value);
-                    } else {
-                        //resetGroup
-                        // foreach($this->arraysqltable as $table) {
-
-                        $value += is_numeric($newValue) ? $newValue : 0;
-                        //echo "k=$k, $value<br/>";
-                        //      $table[$out["target"]];
-                        //   }
-                    }
-                }// finisish resettype=''
-                elseif ($resetType == 'Group') { //reset type='group'
-                    //                       print_r($this->grouplist);
-                    //                       echo "<br/>";
-                    //                       echo $out['resetGroup'] ."<br/>";
-                    //                       //                        if( $this->arraysqltable[$this->global_pointer][$this->group_pointer]!=$this->arraysqltable[$this->global_pointer-1][$this->group_pointer])
-                    //                        if( $this->arraysqltable[$this->global_pointer][$this->group_pointer]!=$this->arraysqltable[$this->global_pointer-1][$this->group_pointer])
-                    //                           $value=0;
-                    //            
-                    if ($this->groupnochange >= 0) {
-
-
-                        //     for($g=$this->groupnochange;$g<4;$g++){
-                        //        $value=0;    
-                        //                                  $this->arrayVariable[$k]["ans"]=0;
-                        //                                echo $this->grouplist[$g]["name"].":".$this->groupnochange."<br/>";
-                        // }
-                    }
-                    //    echo $this->global_pointer.",".$this->group_pointer.",".$this->arraysqltable[$this->global_pointer][$this->group_pointer].",".$this->arraysqltable[$this->global_pointer-1][$this->group_pointer].",".$this->arraysqltable[$rowno]["$out[target]"];
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        $value += $this->time_to_sec($newValue);
-                        //$sum= floor($sum / 3600).":".floor($sum%3600 / 60);
-                        //if($sum=="0:0"){$sum="00:00";}
-                        $value = $this->sec_to_time($value);
-                    } else {
-
-                        $value += $newValue;
-                    }
+                    $value += $this->time_to_sec($newValue);
+                    $value = $this->sec_to_time($value);
+                } else {
+                    $value += is_numeric($newValue) ? $newValue : 0;
                 }
-
-
-                $this->arrayVariable[$k]["ans"] = $value;
-
-                //      echo ",$value<br/>";
                 break;
             case "Average":
-
-
-                if ($out['resetType'] == '' || $out['resetType'] == 'None') {
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        $value = $this->time_to_sec($value);
-                        $value += $this->time_to_sec($newValue);
-                        $value = $this->sec_to_time($value);
-                    } else {
-                        $value = ($value * ($this->report_count - 1) + $newValue) / $this->report_count;
-                    }
-                }// finisish resettype=''
-                elseif ($out['resetType'] == 'Group') { //reset type='group'
-                    if ($this->groupnochange >= 0) {
-
-                    }
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        $value += $this->time_to_sec($newValue);
-                        $value = $this->sec_to_time($value);
-                    } else {
-                        $previousgroupcount = $this->group_count[$out['resetGroup']] - 2;
-                        $newgroupcount = $this->group_count[$out['resetGroup']] - 1;
-                        $previoustotal = $value * $previousgroupcount;
-                        $newtotal = $previoustotal + $newValue;
-                        $value = ($newtotal) / $newgroupcount;
-                    }
+                if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
+                    $value = $this->time_to_sec($value);
+                    $value += $this->time_to_sec($newValue);
+                    $value = $this->sec_to_time($value);
+                } else {
+                    $value = ($value * ($this->report_count - 1) + $newValue) / $this->report_count;
                 }
-
-
-                $this->arrayVariable[$k]["ans"] = $value;
-
                 break;
             case "DistinctCount":
                 break;
@@ -420,44 +391,46 @@ class Report extends Element {
                     if ($rowData->$out["target"] < $lowest) {
                         $lowest = $rowData->$out["target"];
                     }
-                    $this->arrayVariable[$k]["ans"] = $lowest;
+                    $value = $lowest;
                 }
                 break;
             case "Highest":
                 $out["ans"] = 0;
                 foreach ($this->arraysqltable as $table) {
                     if ($rowData->$out["target"] > $out["ans"]) {
-                        $this->arrayVariable[$k]["ans"] = $rowData->$out["target"];
+                        $value = $rowData->$out["target"];
                     }
                 }
                 break;
-            //### A Count for groups, as a variable. Not tested yet, but seemed to work in print_r()                    
             case "Count":
                 $value = $this->arrayVariable[$k]["ans"];
-                if ($this->arraysqltable[$this->global_pointer][$this->group_pointer] != $this->arraysqltable[$this->global_pointer - 1][$this->group_pointer])
-                    $value = 0;
                 $value++;
-                $this->arrayVariable[$k]["ans"] = $value;
                 break;
-            //### End of modification
             case "":
-                $this->arrayVariable[$k]["ans"] = $newValue;
+                $value = $newValue;
                 break;
         }
+        $resetType = (array_key_exists('resetType', $out)) ? $out['resetType'] : '';
+        if ($resetType == 'Group') {
+            if ($this->arrayGroup[$out['resetGroup']]->resetVariables == 'true') {
+                $value = $newValue;
+            }
+        }
+        $this->arrayVariable[$k]["ans"] = $value;
     }
 
     public function getPageNo() {
-        $pdf = JasperPHP\Pdf::get();
+        $pdf = JasperPHP\Instructions::get();
         return $pdf->getPage();
     }
 
     public function getAliasNbPages() {
-        $pdf = JasperPHP\Pdf::get();
+        $pdf = JasperPHP\Instructions::get();
         return $pdf->getNumPages();
     }
 
     public function updatePageNo($s) {
-        $pdf = JasperPHP\Pdf::get();
+        $pdf = JasperPHP\Instructions::get();
         return str_replace('$this->PageNo()', $pdf->PageNo(), $s);
     }
 
@@ -560,7 +533,7 @@ class Report extends Element {
                 return date($pattern, strtotime($txt));
             } else
                 return $txt;
-        }else {
+        } else {
             return $txt;
         }
     }
@@ -619,7 +592,7 @@ class Report extends Element {
             return (($rt) ? ($rt) : "Zero");
         }
     }
-
+    
     public function generate($obj = null) {
         //$this->parameter_handler($this->objElement, $param);
         //$this->variable_handler($this->objElement);
@@ -635,8 +608,8 @@ class Report extends Element {
 
     public function out() {
 
-        $instructions = JasperPHP\Pdf::setJasperObj($this);
-        JasperPHP\Pdf::runInstructions();
+        $instructions = JasperPHP\Instructions::setJasperObj($this);
+        JasperPHP\Instructions::runInstructions();
         //$this->runInstructions($instructions);
     }
 

@@ -1,6 +1,17 @@
+![alt text](https://jasperphp.com/wp-content/uploads/2020/01/cropped-ms-icon-150x150-2.png) 
+
 # JasperPHP
 Project to generate reports created with the JasperSoft Studio application<br>
-Library pure PHP, without a java server or Jasper Server
+Pure PHP library, without a java server or Jasper Server
+
+Consider donating funds to support us
+[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=EE7CD4UZEL3A4&source=url)
+
+See more blog, forum and coming soon report template store in https://jasperphp.com 
+
+# Export formats
+ PDF <br>
+ XLS
 
 # Supported tags/components
 <table>
@@ -47,7 +58,7 @@ Library pure PHP, without a java server or Jasper Server
         <td>OK</td>
     </tr>
     <tr>
-        <td>Corrent Date</td>
+        <td>Current Date</td>
         <td>OK</td>
         <td>Page X of Y</td>
         <td>OK</td>
@@ -59,30 +70,39 @@ Library pure PHP, without a java server or Jasper Server
         <td>Title</td>
         <td>OK</td>
         <td>Page Header</td>
-        <td></td>
+        <td>OK</td>
     </tr>
     <tr>
+        <td>Group</td>
+        <td>OK</td>
         <td>Detail</td>
         <td>OK</td>
+    </tr>
+    <tr>
         <td>Column Header</td>
+        <td>OK</td>
+        <td>Column Footer</td>
         <td>OK</td>
     </tr>
     <tr>
-        <td>Column Footer</td>
-        <td>OK</td>
         <td>Page Footer</td>
+        <td>OK</td>
+        <td>Sumary</td>
         <td>OK</td>
     </tr>
     <tr>
         <td>Background</td>
         <td>OK</td>
     </tr>
-
 </table>
 * Subreports are supported recursively and unlimited
 
 # Other features
 <lu>
+    <li>sum, average,minimum, max of variables</li>
+    <li>read and calculate subreport variables</li>
+    <li>array of objects as input data</li>
+    <li>textfield with html render with data replacement</li>
     <li>active record</li>
 </lu>
 <br>
@@ -192,6 +212,7 @@ $jasper->outpage();
 # Requirements
 * PHP 5.2+
 * "tecnickcom/tcpdf":"6.2.*"
+* "PHPOffice/PHPExcel" only of XLS export
 
 # How to use this sample
 Define database conections params into file config\dev.ini<br>
