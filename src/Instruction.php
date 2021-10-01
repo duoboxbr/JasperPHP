@@ -442,7 +442,13 @@ class Instruction {
                     $pdf->MultiCell(
                             $arraydata["width"], $arraydata["height"], $text, $arraydata["border"], $arraydata["align"], 0, 0, $x, $y, true, 0);
                 } else {
-                    $pdf->Cell($arraydata["width"], $arraydata["height"], $text, $arraydata["border"], "", $arraydata["align"], $arraydata["fill"], $arraydata["link"], 0, true, "T", $arraydata["valign"]);
+                    $stretch = 0;
+                    $cellText = $text;
+                    if (isset($arraydata['textAdjust']) && $arraydata['textAdjust'] == 'ScaleFont') {
+                        $stretch = 1;
+                        $cellText = $arraydata['txt'];
+                    }
+                    $pdf->Cell($arraydata["width"], $arraydata["height"], $cellText, $arraydata["border"], "", $arraydata["align"], $arraydata["fill"], $arraydata["link"], $stretch, true, "T", $arraydata["valign"]);
                 }
             } elseif ($arraydata["poverflow"] == "true") {
                 if ($arraydata["valign"] == "C")

@@ -280,6 +280,7 @@ class TextField extends Element {
                 $printWhenExpression = $obj->getValOfVariable($macthV, $printWhenExpression);
             }
         }
+        $textAdjust = isset($this->textAdjust) ? (string) $this->textAdjust : null;
         JasperPHP\Pdf::addInstruction(array("type" => "MultiCell", "width" => $data->reportElement["width"] + 0, "height" => $height + 0, "txt" => $text . "",
             "border" => $border, "align" => $align, "fill" => $fill,
             "hidden_type" => "field", "soverflow" => $stretchoverflow, "poverflow" => $printoverflow,
@@ -288,6 +289,7 @@ class TextField extends Element {
             "writeHTML" => $writeHTML,
             "multiCell" => $multiCell,
             "isPrintRepeatedValues" => $isPrintRepeatedValues,
+            "textAdjust" => $textAdjust,
             "rotation" => $rotation,
             "valign" => $valign,
             "x" => $data->reportElement["x"] + 0, "y" => $data->reportElement["y"] + 0));
