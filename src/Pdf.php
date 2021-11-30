@@ -3,7 +3,7 @@
 namespace JasperPHP;
 
 use \JasperPHP;
-use \TCPDF;
+use setasign\Fpdi\Tcpdf\Fpdi as TCPDF;
 
 /*
  * classe Pdf
