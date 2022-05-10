@@ -44,13 +44,17 @@ class Report extends Element {
             $xmlFile = file_get_contents(self::$defaultFolder . DIRECTORY_SEPARATOR . $xmlFile);
         } elseif (file_exists($xmlFile)) {
             $xmlFile = file_get_contents($xmlFile);
-        }else{
-            throw new Exception("File {$xmlFile} not found!!");
         }
+
         $keyword = "<queryString>
         <![CDATA[";
         $xmlFile = str_replace($keyword, "<queryString><![CDATA[", $xmlFile);
         $xml = simplexml_load_string($xmlFile,null,LIBXML_NOCDATA);
+
+        if(!$xml){
+            throw new Exception("File {$xmlFile} not found/invalid!!");
+        }
+
         $this->charge($xml, $param);
         //$this->objElement = $xml;
     }
