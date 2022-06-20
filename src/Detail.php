@@ -22,6 +22,15 @@ class Detail extends Element {
             $rowIndex = 1;
             $totalRows = is_array($dbData) ? count($dbData) : $dbData->rowCount();
 
+            $minHeight = 0;
+            foreach ($this->children[0]->objElement->property as $property) {
+                if ((string) $property['name'] == 'minHeight') {
+                    if ((int) $property['value'] > 0) {
+                        $minHeight = (int) $property['value'];
+                    }
+                }
+            }
+
             $row = is_array($dbData) ? $dbData[0] : $obj->rowData; // $dbData->fetchObject($recordObject);
             while ($row) {
                 $row->rowIndex = $rowIndex;
@@ -74,6 +83,8 @@ class Detail extends Element {
                         }
                         $height = (string) $child->objElement['height'];
                         if ($print_expression_result == true) {
+                            $minHeight -= $height;
+
                             if ($child->objElement['splitType'] == 'Stretch' || $child->objElement['splitType'] == 'Prevent') {
                                 JasperPHP\Pdf::addInstruction(array("type" => "PreventY_axis", "y_axis" => $height));
                             }
@@ -95,6 +106,9 @@ class Detail extends Element {
 
                 $row = ( is_array($dbData) ) ? (array_key_exists($rowIndex, $dbData)) ? $dbData[$rowIndex] : null : $dbData->fetchObject($recordObject);
                 $rowIndex++;
+            }
+            if ($minHeight > 0) {
+                JasperPHP\Pdf::addInstruction(array("type" => "SetY_axis", "y_axis" => $minHeight));
             }
 
             //$this->close();
