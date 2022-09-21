@@ -81,7 +81,7 @@ use \JasperPHP;
 					//Dotted Dashed
 				}
 
-				$border=array($borderset => array('width' => $data->box->pen["lineWidth"],
+				$border=array($borderset => array('width' => (float) $data->box->pen["lineWidth"],
 					'cap' => 'butt', 
 					'join' => 'miter', 
 					'dash' =>$dash,

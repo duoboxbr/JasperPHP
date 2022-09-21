@@ -28,7 +28,7 @@ use \JasperPHP;
         $borderwidth=1;
            
            if(isset($data->graphicElement->pen["lineWidth"]))
-                 $borderwidth=$data->graphicElement->pen["lineWidth"];
+                 $borderwidth=(float) $data->graphicElement->pen["lineWidth"];
             
              if(isset($data->graphicElement->pen["lineColor"]))
                  $drawcolor=array("r"=>hexdec(substr($data->graphicElement->pen["lineColor"],1,2)),"g"=>hexdec(substr($data->graphicElement->pen["lineColor"],3,2)),"b"=>hexdec(substr($data->graphicElement->pen["lineColor"],5,2)));

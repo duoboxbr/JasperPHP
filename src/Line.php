@@ -23,10 +23,10 @@ use \JasperPHP;
             $obj = is_array($obj)?$obj[0]:$obj; 
 			$drawcolor=array("r"=>0,"g"=>0,"b"=>0);
 			$hidden_type="line";
-			$linewidth  ='';
+			$linewidth  = null;
             $dash = '';
 			if($data->graphicElement->pen["lineWidth"]>0)
-				$linewidth=$data->graphicElement->pen["lineWidth"];
+				$linewidth = (float) $data->graphicElement->pen["lineWidth"];
 
 			/*
 			$borderset="";
