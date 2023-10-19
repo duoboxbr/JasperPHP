@@ -20,7 +20,7 @@ class Detail extends Element {
         $dbData = $obj->dbData;
         if ($this->children) {
             $rowIndex = 1;
-            $totalRows = is_array($dbData) ? count($dbData) : $dbData->rowCount();
+            $totalRows = is_countable($dbData) ? count($dbData) : $dbData->rowCount();
 
             $minHeight = 0;
             foreach ($this->children[0]->objElement->property as $property) {
@@ -31,9 +31,21 @@ class Detail extends Element {
                 }
             }
 
-            $row = is_array($dbData) ? $dbData[0] : $obj->rowData; // $dbData->fetchObject($recordObject);
+            $row = (is_array($dbData) || $dbData instanceOf \ArrayAccess) ? $dbData[0] : $obj->rowData;
+
+            $obj->variables_calculation($obj, $row);
             while ($row) {
+                if(JasperPHP\Report::$proccessintructionsTime == 'inline'){
+                    JasperPHP\Instructions::runInstructions();
+                }
+
+                // convert array to object
+                if (!is_object($row) && is_array($row)) {
+                    $row = (object)$row;
+                }
+
                 $row->rowIndex = $rowIndex;
+
                 $obj->arrayVariable['REPORT_COUNT']["ans"] = $rowIndex;
                 $obj->arrayVariable['REPORT_COUNT']['target'] = $rowIndex;
                 $obj->arrayVariable['REPORT_COUNT']['calculation'] = null;
@@ -41,7 +53,17 @@ class Detail extends Element {
                 $obj->arrayVariable['totalRows']["target"] = $totalRows;
                 $obj->arrayVariable['totalRows']["calculation"] = null;
                 $row->totalRows = $totalRows;
-                $obj->variables_calculation($obj, $row);
+                if (count($obj->arrayGroup) > 0) {
+                    foreach ($obj->arrayGroup as $group) {
+                        preg_match_all("/F{(\w+)}/", $group->groupExpression, $matchesF);
+                        $groupExpression = $matchesF[1][0];
+                        if (($rowIndex == 1 || $group->resetVariables == 'true') && ($group->groupHeader)) {
+                            $groupHeader = new GroupHeader($group->groupHeader);
+                            $groupHeader->generate(array($obj, $row));
+                            $group->resetVariables = 'false';
+                        }
+                    }
+                }
                 $background = $obj->getChildByClassName('Background');
 
                 if ($background)
@@ -52,30 +74,11 @@ class Detail extends Element {
                     // se for objeto
                     if (is_object($child)) {
                         $print_expression_result = false;
-                        //var_dump((string)$child->objElement->printWhenExpression);
-                        //echo     (string)$child->objElement['printWhenExpression']."oi";
                         $printWhenExpression = (string) $child->objElement->printWhenExpression;
                         if ($printWhenExpression != '') {
 
+                            $printWhenExpression = $obj->get_expression($printWhenExpression, $row);
 
-                            //echo $printWhenExpression;
-                            preg_match_all("/P{(\w+)}/", $printWhenExpression, $matchesP);
-                            preg_match_all("/F{(\w+)}/", $printWhenExpression, $matchesF);
-                            preg_match_all("/V{(\w+)}/", $printWhenExpression, $matchesV);
-                            if ($matchesP > 0) {
-                                foreach ($matchesP[1] as $macthP) {
-                                    $printWhenExpression = str_ireplace(array('$P{' . $macthP . '}', '"'), array($obj->arrayParameter[$macthP], ''), $printWhenExpression);
-                                }
-                            }if ($matchesF > 0) {
-                                foreach ($matchesF[1] as $macthF) {
-                                    $printWhenExpression = $obj->getValOfField($macthF, $row, $printWhenExpression);
-                                }
-                            }
-                            if ($matchesV > 0) {
-                                foreach ($matchesV[1] as $macthV) {
-                                    $printWhenExpression = $obj->getValOfVariable($macthV, $printWhenExpression);
-                                }
-                            }
                             //echo    'if('.$printWhenExpression.'){$print_expression_result=true;}';
                             eval('if(' . $printWhenExpression . '){$print_expression_result=true;}');
                         } else {
@@ -86,25 +89,36 @@ class Detail extends Element {
                             $minHeight -= $height;
 
                             if ($child->objElement['splitType'] == 'Stretch' || $child->objElement['splitType'] == 'Prevent') {
-                                JasperPHP\Pdf::addInstruction(array("type" => "PreventY_axis", "y_axis" => $height));
+                                JasperPHP\Instructions::addInstruction(array("type" => "PreventY_axis", "y_axis" => $height));
+                            }
+                            if(JasperPHP\Report::$proccessintructionsTime == 'inline'){
+                                JasperPHP\Instructions::runInstructions();
                             }
                             $child->generate(array($obj, $row));
                             if ($child->objElement['splitType'] == 'Stretch' || $child->objElement['splitType'] == 'Prevent') {
-                                JasperPHP\Pdf::addInstruction(array("type" => "SetY_axis", "y_axis" => $height));
+                                JasperPHP\Instructions::addInstruction(array("type" => "SetY_axis", "y_axis" => $height));
+                            }
+                            if(JasperPHP\Report::$proccessintructionsTime == 'inline'){
+                                JasperPHP\Instructions::runInstructions();
                             }
                             if ($obj->arrayPageSetting['columnCount'] > 1) {
-                                JasperPHP\Pdf::addInstruction(array("type" => "ChangeCollumn"));
+                                JasperPHP\Instructions::addInstruction(array("type" => "ChangeCollumn"));
                                 if (is_int($rowIndex / $obj->arrayPageSetting['columnCount'])) {
-                                    JasperPHP\Pdf::addInstruction(array("type" => "SetY_axis", "y_axis" => $height));
+                                    JasperPHP\Instructions::addInstruction(array("type" => "SetY_axis", "y_axis" => $height));
                                 }
                             }
                         }
                     }
                 }
+
                 $arrayVariable = ($obj->arrayVariable) ? $obj->arrayVariable : array();
                 $recordObject = array_key_exists('recordObj', $arrayVariable) ? $obj->arrayVariable['recordObj']['initialValue'] : "stdClass";
+                $obj->lastRowData = $obj->rowData;
+                $row = ( is_array($dbData) || $dbData instanceOf \ArrayAccess ) ? (isset($dbData[$rowIndex])) ? $dbData[$rowIndex] : null : $dbData->fetchObject($recordObject);
+                //echo $rowIndex;
 
-                $row = ( is_array($dbData) ) ? (array_key_exists($rowIndex, $dbData)) ? $dbData[$rowIndex] : null : $dbData->fetchObject($recordObject);
+                $obj->rowData = $row;
+                $obj->variables_calculation($obj, $row);
                 $rowIndex++;
             }
             if ($minHeight > 0) {

@@ -17,7 +17,12 @@ use \JasperPHP;
 class ColumnFooter extends Element {
 
     public function generate($obj = null) {
-        $row = is_array($obj) ? $obj[1] : array();
+        $rowIndex = 0;
+        $row = $obj->lastRowData;
+        if (!$row) {return;}
+        //if (!$row) {
+        //    $row = array();
+        //}
         $obj = is_array($obj) ? $obj[0] : $obj;
         foreach ($this->children as $child) {
             // se for objeto
@@ -29,37 +34,19 @@ class ColumnFooter extends Element {
                 $printWhenExpression = (string) $child->objElement->printWhenExpression;
                 if ($printWhenExpression != '') {
 
-
-                    //echo $printWhenExpression;
-                    preg_match_all("/P{(\w+)}/", $printWhenExpression, $matchesP);
-                    preg_match_all("/F{(\w+)}/", $printWhenExpression, $matchesF);
-                    preg_match_all("/V{(\w+)}/", $printWhenExpression, $matchesV);
-                    if ($matchesP > 0) {
-                        foreach ($matchesP[1] as $macthP) {
-                            $printWhenExpression = str_ireplace(array('$P{' . $macthP . '}', '"'), array($obj->arrayParameter[$macthP], ''), $printWhenExpression);
-                        }
-                    }if ($matchesF > 0) {
-                        foreach ($matchesF[1] as $macthF) {
-                            $printWhenExpression = $obj->getValOfField($macthF, $row, $printWhenExpression);
-                        }
-                    }
-                    if ($matchesV > 0) {
-                        foreach ($matchesV[1] as $macthV) {
-                            $printWhenExpression = $obj->getValOfVariable($macthV, $printWhenExpression);
-                        }
-                    }
-                    //echo    'if('.$printWhenExpression.'){$print_expression_result=true;}';
+                    $printWhenExpression = $obj->get_expression($printWhenExpression, $row);
                     eval('if(' . $printWhenExpression . '){$print_expression_result=true;}');
+                    
                 } else {
                     $print_expression_result = true;
                 }
                 if ($print_expression_result == true) {
                     if ($this->children['0']->objElement['splitType'] == 'Stretch' || $this->children['0']->objElement['splitType'] == 'Prevent') {
-                        JasperPHP\Pdf::addInstruction(array("type" => "PreventY_axis", "y_axis" => $this->children['0']->objElement['height']));
+                        JasperPHP\Instructions::addInstruction(array("type" => "PreventY_axis", "y_axis" => $this->children['0']->objElement['height']));
                     }
-                    parent::generate($obj);
+                    parent::generate(array($obj,$row));
                     //var_dump($this->children['0']);
-                    JasperPHP\Pdf::addInstruction(array("type" => "SetY_axis", "y_axis" => $this->children['0']->objElement['height']));
+                    JasperPHP\Instructions::addInstruction(array("type" => "SetY_axis", "y_axis" => $this->children['0']->objElement['height']));
                 }
             }
         }

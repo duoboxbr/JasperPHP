@@ -17,12 +17,25 @@ use \JasperPHP;
 class PageHeader extends Element {
 
     public function generate($obj = null) {
-        $rowData = $obj->rowData;
+        $row = (array) $obj->rowData;
         $data = $this->objElement;
         $obj = is_array($obj) ? $obj[0] : $obj;
-        $height = (string) $this->children['0']->objElement['height'];
-        parent::generate(array($obj, $rowData));
-
-        JasperPHP\Pdf::addInstruction(array("type" => "SetY_axis", "y_axis" => $height));
+        $band = $this->children['0'];
+        $height = (string) $band->objElement['height'];
+        $print_expression_result = false;
+        $printWhenExpression = (string) $band->objElement->printWhenExpression;
+        
+        if ($printWhenExpression != '') {
+            $printWhenExpression = $obj->get_expression($printWhenExpression, $row);
+            eval('if(' . $printWhenExpression . '){$print_expression_result=true;}');
+        } else {
+            $print_expression_result = true;
+        }
+        
+        if ($print_expression_result == true) {
+            parent::generate(array($obj, $row));
+            JasperPHP\Instructions::addInstruction(array("type" => "SetY_axis", "y_axis" => $height));
+        }
     }
+
 }

@@ -20,27 +20,38 @@ use JasperPHP\ado\TTransaction;
 class Report extends Element {
 
     public static $defaultFolder = 'app.jrxml';
+    public static $locale = 'en_us';
+    public static $dec_point=".";
+    public static $thousands_sep=",";
+    public static $columnHeaderRepeat=false;
+    public static $proccessintructionsTime = "after"; // after : process intructions after generate all intrucions / inline : process intrucions after gerenate each detail
     public $dbData;
+    public $pageChanged;
     public $arrayVariable;
     public $arrayfield;
     public $arrayParameter;
     public $arrayPageSetting;
+    public $arrayGroup;
     public $sql;
     public $print_expression_result;
     public $returnedValues = array();
     public $objElement;
     public $rowData;
+    public $lastRowData;
+    public $arrayStyles;
 
     public function __construct($xmlFile = null, $param) {
         if (file_exists(self::$defaultFolder . DIRECTORY_SEPARATOR . $xmlFile)) {
             $xmlFile = file_get_contents(self::$defaultFolder . DIRECTORY_SEPARATOR . $xmlFile);
         } elseif (file_exists($xmlFile)) {
             $xmlFile = file_get_contents($xmlFile);
+        }else{
+            throw new Exception("File {$xmlFile} not found!!");
         }
         $keyword = "<queryString>
         <![CDATA[";
         $xmlFile = str_replace($keyword, "<queryString><![CDATA[", $xmlFile);
-        $xml = simplexml_load_string($xmlFile);
+        $xml = simplexml_load_string($xmlFile,null,LIBXML_NOCDATA);
         $this->charge($xml, $param);
         //$this->objElement = $xml;
     }
@@ -60,6 +71,9 @@ class Report extends Element {
             $obj = ($obj == 'break') ? 'Breaker' : $obj;
             $className = "JasperPHP\\" . ucfirst($obj);
             // echo $className."|";
+            if(ucfirst($obj)=='Style'){
+            $this->addStyle($value); 
+            }
             if (class_exists($className)) {
                 // echo $className."%".CHR(10);
                 $this->add(new $className($value));
@@ -70,6 +84,7 @@ class Report extends Element {
         $this->variable_handler($ObjElement);
         $this->page_setting($ObjElement);
         $this->queryString_handler($ObjElement);
+        $this->group_handler($ObjElement);
     }
 
     public function getDbData() {
@@ -80,14 +95,30 @@ class Report extends Element {
 
             // executa instrução de SELECT
             $result = $conn->Query($this->sql);
-            $arrayVariable = ($this->arrayVariable) ? $this->arrayVariable : array();
+            $arrayVariable = isset($this->arrayVariable) ? $this->arrayVariable : array();
             $recordObject = array_key_exists('recordObj', $arrayVariable) ? $this->arrayVariable['recordObj']['initialValue'] : "stdClass";
 
             $this->rowData = $result->fetchObject($recordObject);
             return $result;
         } else {
             // se não tiver transação, retorna uma exceção
-            throw new Exception('Não há transação ativa!!');
+            throw new Exception('No transaction!!');
+        }
+    }
+	
+	public function getDbDataQuery($sql) {
+
+        if ($conn = JasperPHP\ado\TTransaction::get()) {
+            // registra mensagem de log
+            JasperPHP\ado\TTransaction::log($sql);
+
+            // executa instrução de SELECT
+            $result = $conn->Query($sql);
+            $rowData = $result->fetchAll(\PDO::FETCH_CLASS);
+            return $rowData;
+        } else {
+            // se não tiver transação, retorna uma exceção
+            throw new Exception('No transaction!!');
         }
     }
 
@@ -144,13 +175,19 @@ class Report extends Element {
         }
     }
 
-    public function queryString_handler($xml_path) {
-        //var_dump($xml_path);
-        $this->sql = (string) $xml_path->queryString;
-        if (strlen(trim($xml_path->queryString)) > 0) {
+    public function group_handler($xml_path) {
+        $this->arrayGroup = array();
+        foreach ($xml_path->group as $group) {
 
-            if (isset($this->arrayParameter)) {
-                foreach ($this->arrayParameter as $v => $a) {
+            $groupName = (string) $group["name"];
+            $this->arrayGroup[$groupName] = $group;
+            $group->addAttribute('resetVariables', 'false');
+        }
+    }
+
+	public function prepareSql($sql, $arrayParameter=array()){
+		if (isset($arrayParameter) && !empty($arrayParameter)) {
+                foreach ($arrayParameter as $v => $a) {
                     if (is_array($a)) {
                         foreach ($a as $x) {
                             // se for um inteiro
@@ -163,7 +200,7 @@ class Report extends Element {
                         }
                         // converte o array em string separada por ","
                         $result = '(' . implode(',', $foo) . ')';
-                        $this->sql = str_replace('$P{' . $v . '}', $result, $this->sql);
+                        $sql = str_replace('$P{' . $v . '}', $result, $sql);
                     } else {
                         /* if (is_integer($a))
                           {
@@ -174,9 +211,21 @@ class Report extends Element {
                           // se for string, adiciona aspas
                           $x= "'$a'";
                           } */
-                        $this->sql = str_replace('$P{' . $v . '}', $a, $this->sql);
+                        $sql = str_replace('$P{' . $v . '}', $a, $sql);
+                        $sql = str_replace('$P!{' . $v . '}', $a, $sql);
                     }
                 }
+            }
+		return $sql;
+	}
+	
+    public function queryString_handler($xml_path) {
+        //var_dump($xml_path);
+        $this->sql = (string) $xml_path->queryString;
+        if (strlen(trim($xml_path->queryString)) > 0) {
+
+            if (isset($this->arrayParameter)) {
+				$this->sql=$this->prepareSql($this->sql,$this->arrayParameter);
             }
         }
     }
@@ -186,6 +235,9 @@ class Report extends Element {
             foreach ($this->arrayVariable as $k => $out) {
                 $this->variable_calculation($k, $out, $row);
             }
+        }
+        if($this->pageChanged == true){
+            $this->pageChanged = false;
         }
     }
 
@@ -218,7 +270,34 @@ class Report extends Element {
         }
     }
 
-    public function getValOfVariable($variable, $text) {
+    public function get_expression($text, $row, $writeHTML = null, $element = null) {
+        preg_match_all("/P{(\w+)}/", $text, $matchesP);
+        if ($matchesP) {
+            foreach ($matchesP[1] as $macthP) {
+                $text = str_ireplace(array('$P{' . $macthP . '}', '"'), array($this->arrayParameter[$macthP], ''), $text);
+            }
+        }
+
+        preg_match_all("/V{(\w+)}/", $text, $matchesV);
+        if ($matchesV) {
+            foreach ($matchesV[1] as $macthV) {
+                $text = $this->getValOfVariable($macthV, $text, $writeHTML, $element);
+            }
+        }
+        
+        preg_match_all("/F{[^}]*}/", $text, $matchesF);
+        if ($matchesF) {
+            //var_dump($matchesF);
+            foreach ($matchesF[0] as $macthF) {
+                $macth = str_ireplace(array("F{", "}"), "", $macthF);
+                $text = $this->getValOfField($macth, $row, $text, $writeHTML);
+            }
+        }
+
+        return $text;
+    }
+
+    public function getValOfVariable($variable, $text, $htmlentities = false, $element = null) {
         $val = array_key_exists($variable, $this->arrayVariable) ? $this->arrayVariable[$variable] : array();
         $ans = array_key_exists('ans', $val) ? $val['ans'] : '';
         if (preg_match_all("/V{" . $variable . "}\.toString/", $text, $matchesV) > 0) {
@@ -236,8 +315,12 @@ class Report extends Element {
             }
         } elseif ($variable == "MASTER_TOTAL_PAGES") {
             return str_ireplace(array('$V{MASTER_TOTAL_PAGES}'), array('{:ptp:}'), $text);
-        } elseif ($variable == "PAGE_NUMBER" || $variable == "MASTER_CURRENT_PAGE") {
-            return str_ireplace(array('$V{' . $variable . '}'), array(JasperPHP\Pdf::getPageNo()), $text);
+        } elseif ($variable == "PAGE_NUMBER" || $variable == "MASTER_CURRENT_PAGE" || $variable == "CURRENT_PAGE_NUMBER" ) {
+            if ( (JasperPHP\Instructions::$processingPageFooter && JasperPHP\Instructions::$lastPageFooter)
+               || (isset($element->evaluationTime) && $element->evaluationTime == "Report") ) {
+                return str_ireplace(array('$V{' . $variable . '}'), array('{:ptp:}'), $text);
+            }
+            return str_ireplace(array('$V{' . $variable . '}'), array(JasperPHP\Instructions::$currrentPage), $text);
         } else {
             return str_ireplace(array('$V{' . $variable . '}'), array($ans), $text);
         }
@@ -247,7 +330,8 @@ class Report extends Element {
         error_reporting(0);
         $fieldParts = strpos($field, "->") ? explode("->", $field) : explode("-&gt;", $field);
         $obj = $row;
-
+        //var_dump($fieldParts);
+        // exit;
         foreach ($fieldParts as $part) {
             if (preg_match_all("/\w+/", $part, $matArray)) {
                 if (count($matArray[0]) > 1) {
@@ -255,9 +339,24 @@ class Report extends Element {
                     $objCounter = $matArray[0][1];
                     $obj = $obj->$objArrayName;
                     $obj = $obj[$objCounter];
+                } else if (is_array($obj)) {
+                    if (array_key_exists($part, $obj)) {
+                        $obj = $obj[$part];
+                    } else {
+                        $obj = "";
+                    }
+                } else if (is_object($obj)) {
+                    preg_match_all("/(\w+)\(\)/", $part, $matchMethod);
+                    if ($matchMethod && array_key_exists(0, $matchMethod[1])) {
+                        $method = $matchMethod[1][0];
+                        $obj = $obj->$method();
+                    } else {
+                        $obj = $obj->$part;
+                    }
                 } else {
-                    $obj = $obj->$part;
+                    $obj = "";
                 }
+                
             }
         }
 
@@ -285,6 +384,10 @@ class Report extends Element {
             } else {
                 return str_ireplace(array('$' . $matchesV[0][0] . "()"), array(call_user_func($funcName, $val)), $text);
             }
+        } elseif (is_array($val)) {
+            return $val;
+        } elseif ($val === false) {
+            return str_ireplace('$F{' . $field . '}', '0', $text);
         } else {
             return str_ireplace(array('$F{' . $field . '}'), array(($val)), $text);
         }
@@ -313,104 +416,35 @@ class Report extends Element {
         }
         $htmlData = array_key_exists('htmlData', $this->arrayVariable) ? $this->arrayVariable['htmlData']['class'] : '';
         if (preg_match('/(\d+)(?:\s*)([\+\-\*\/])(?:\s*)/', $out['target'], $matchesMath) > 0 && $htmlData != 'HTMLDATA') {
-
+            
             error_reporting(0);
             $mathValue = eval('return (' . $out['target'] . ');');
             error_reporting(5);
         }
-
+        
         $value = (array_key_exists('ans', $this->arrayVariable[$k])) ? $this->arrayVariable[$k]["ans"] : null;
         $newValue = (isset($mathValue)) ? $mathValue : $out['target'];
-        //   echo $out['resetType']. "<br/><br/>";
+        $resetType = (array_key_exists('resetType', $out)) ? $out['resetType'] : '';
+        
         switch ($out["calculation"]) {
             case "Sum":
-                $resetType = (array_key_exists('resetType', $out)) ? $out['resetType'] : '';
-                if ($resetType == '' || $resetType == 'None') {
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        //    foreach($this->arraysqltable as $table) {
-                        $value = $this->time_to_sec($value);
+                if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
+                    $value = $this->time_to_sec($value);
 
-                        $value += $this->time_to_sec($newValue);
-                        //$sum=$sum+mb_substr($table["$out[target]"],0,2)*3600+mb_substr($table["$out[target]"],3,2)*60+mb_substr($table["$out[target]"],6,2);
-                        // }
-                        //$sum= floor($sum / 3600).":".floor($sum%3600 / 60);
-                        //if($sum=="0:0"){$sum="00:00";}
-                        $value = $this->sec_to_time($value);
-                    } else {
-                        //resetGroup
-                        // foreach($this->arraysqltable as $table) {
-
-                        $value += is_numeric($newValue) ? $newValue : 0;
-                        //echo "k=$k, $value<br/>";
-                        //      $table[$out["target"]];
-                        //   }
-                    }
-                }// finisish resettype=''
-                elseif ($resetType == 'Group') { //reset type='group'
-                    //                       print_r($this->grouplist);
-                    //                       echo "<br/>";
-                    //                       echo $out['resetGroup'] ."<br/>";
-                    //                       //                        if( $this->arraysqltable[$this->global_pointer][$this->group_pointer]!=$this->arraysqltable[$this->global_pointer-1][$this->group_pointer])
-                    //                        if( $this->arraysqltable[$this->global_pointer][$this->group_pointer]!=$this->arraysqltable[$this->global_pointer-1][$this->group_pointer])
-                    //                           $value=0;
-                    //            
-                    if ($this->groupnochange >= 0) {
-
-
-                        //     for($g=$this->groupnochange;$g<4;$g++){
-                        //        $value=0;    
-                        //                                  $this->arrayVariable[$k]["ans"]=0;
-                        //                                echo $this->grouplist[$g]["name"].":".$this->groupnochange."<br/>";
-                        // }
-                    }
-                    //    echo $this->global_pointer.",".$this->group_pointer.",".$this->arraysqltable[$this->global_pointer][$this->group_pointer].",".$this->arraysqltable[$this->global_pointer-1][$this->group_pointer].",".$this->arraysqltable[$rowno]["$out[target]"];
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        $value += $this->time_to_sec($newValue);
-                        //$sum= floor($sum / 3600).":".floor($sum%3600 / 60);
-                        //if($sum=="0:0"){$sum="00:00";}
-                        $value = $this->sec_to_time($value);
-                    } else {
-
-                        $value += $newValue;
-                    }
+                    $value += $this->time_to_sec($newValue);
+                    $value = $this->sec_to_time($value);
+                } else {
+                    $value += is_numeric($newValue) ? $newValue : 0;
                 }
-
-
-                $this->arrayVariable[$k]["ans"] = $value;
-
-                //      echo ",$value<br/>";
                 break;
             case "Average":
-
-
-                if ($out['resetType'] == '' || $out['resetType'] == 'None') {
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        $value = $this->time_to_sec($value);
-                        $value += $this->time_to_sec($newValue);
-                        $value = $this->sec_to_time($value);
-                    } else {
-                        $value = ($value * ($this->report_count - 1) + $newValue) / $this->report_count;
-                    }
-                }// finisish resettype=''
-                elseif ($out['resetType'] == 'Group') { //reset type='group'
-                    if ($this->groupnochange >= 0) {
-                        
-                    }
-                    if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
-                        $value += $this->time_to_sec($newValue);
-                        $value = $this->sec_to_time($value);
-                    } else {
-                        $previousgroupcount = $this->group_count[$out['resetGroup']] - 2;
-                        $newgroupcount = $this->group_count[$out['resetGroup']] - 1;
-                        $previoustotal = $value * $previousgroupcount;
-                        $newtotal = $previoustotal + $newValue;
-                        $value = ($newtotal) / $newgroupcount;
-                    }
+                if (isset($this->arrayVariable[$k]['class']) && $this->arrayVariable[$k]['class'] == "java.sql.Time") {
+                    $value = $this->time_to_sec($value);
+                    $value += $this->time_to_sec($newValue);
+                    $value = $this->sec_to_time($value);
+                } else {
+                    $value = ($value * ($this->report_count - 1) + $newValue) / $this->report_count;
                 }
-
-
-                $this->arrayVariable[$k]["ans"] = $value;
-
                 break;
             case "DistinctCount":
                 break;
@@ -421,44 +455,52 @@ class Report extends Element {
                     if ($rowData->$out["target"] < $lowest) {
                         $lowest = $rowData->$out["target"];
                     }
-                    $this->arrayVariable[$k]["ans"] = $lowest;
+                    $value = $lowest;
                 }
                 break;
             case "Highest":
                 $out["ans"] = 0;
                 foreach ($this->arraysqltable as $table) {
                     if ($rowData->$out["target"] > $out["ans"]) {
-                        $this->arrayVariable[$k]["ans"] = $rowData->$out["target"];
+                        $value = $rowData->$out["target"];
                     }
                 }
                 break;
-            //### A Count for groups, as a variable. Not tested yet, but seemed to work in print_r()                    
             case "Count":
                 $value = $this->arrayVariable[$k]["ans"];
-                if ($this->arraysqltable[$this->global_pointer][$this->group_pointer] != $this->arraysqltable[$this->global_pointer - 1][$this->group_pointer])
-                    $value = 0;
                 $value++;
-                $this->arrayVariable[$k]["ans"] = $value;
                 break;
-            //### End of modification
             case "":
-                $this->arrayVariable[$k]["ans"] = $newValue;
+                $value = $newValue;
                 break;
         }
+        if ($resetType == 'Page') {
+            if ($this->pageChanged == 'true') {
+                $value = $newValue;
+            }
+        }
+        $this->arrayVariable[$k]["lastValue"] = $newValue;
+        if ($resetType == 'Group') {
+            if ($this->arrayGroup[$out['resetGroup']]->resetVariables == 'true') {
+                $value = $newValue;
+            }
+        }
+        
+        $this->arrayVariable[$k]["ans"] = $value;
     }
 
     public function getPageNo() {
-        $pdf = JasperPHP\Pdf::get();
+        $pdf = JasperPHP\Instructions::get();
         return $pdf->getPage();
     }
 
     public function getAliasNbPages() {
-        $pdf = JasperPHP\Pdf::get();
+        $pdf = JasperPHP\Instructions::get();
         return $pdf->getNumPages();
     }
 
     public function updatePageNo($s) {
-        $pdf = JasperPHP\Pdf::get();
+        $pdf = JasperPHP\Instructions::get();
         return str_replace('$this->PageNo()', $pdf->PageNo(), $s);
     }
 
@@ -474,35 +516,37 @@ class Report extends Element {
     public static function formatText($txt, $pattern) {
         if ($txt != '') {
             $nome_meses = array('Janeiro', 'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro');
-            if ($pattern == "###0")
+            if (substr($pattern, 0, 1) === "%")
+                return sprintf($pattern,$txt);
+            elseif ($pattern == "###0")
                 return number_format($txt, 0, "", "");
-            elseif ($pattern == "#,##0")
-                return number_format($txt, 0, ".", ",");
+            elseif ($pattern == "#.##0")
+                return number_format($txt, 0, self::$dec_point, self::$thousands_sep);
             elseif ($pattern == "###0.0")
-                return number_format($txt, 1, ".", "");
+                return number_format($txt, 1, self::$dec_point, "");
             elseif ($pattern == "#,##0.0" || $pattern == "#,##0.0;-#,##0.0")
-                return number_format($txt, 1, ".", ",");
+                return number_format($txt, 1, self::$dec_point, self::$thousands_sep);
             elseif ($pattern == "###0.00" || $pattern == "###0.00;-###0.00")
-                return number_format($txt, 2, ".", "");
+                return number_format($txt, 2, self::$dec_point, "");
             elseif ($pattern == "#,##0.00" || $pattern == "#,##0.00;-#,##0.00")
-                return number_format($txt, 2, ".", ",");
+                return number_format($txt, 2, self::$dec_point, self::$thousands_sep);
             elseif ($pattern == "###0.00;(###0.00)")
-                return ($txt < 0 ? "(" . number_format(abs($txt), 2, ".", "") . ")" : number_format($txt, 2, ".", ""));
+                return ($txt < 0 ? "(" . number_format(abs($txt), 2, self::$dec_point, "") . ")" : number_format($txt, 2, self::$dec_point, ""));
             elseif ($pattern == "#,##0.00;(#,##0.00)")
-                return ($txt < 0 ? "(" . number_format(abs($txt), 2, ".", ",") . ")" : number_format($txt, 2, ".", ","));
+                return ($txt < 0 ? "(" . number_format(abs($txt), 2, self::$dec_point, self::$thousands_sep) . ")" : number_format($txt, 2, self::$dec_point, self::$thousands_sep));
             elseif ($pattern == "#,##0.00;(-#,##0.00)")
-                return ($txt < 0 ? "(" . number_format($txt, 2, ".", ",") . ")" : number_format($txt, 2, ".", ","));
+                return ($txt < 0 ? "(" . number_format($txt, 2, self::$dec_point, self::$thousands_sep) . ")" : number_format($txt, 2, self::$dec_point, self::$thousands_sep));
             elseif ($pattern == "###0.000")
-                return number_format($txt, 3, ".", "");
+                return number_format($txt, 3, self::$dec_point, "");
             elseif ($pattern == "#,##0.000")
-                return number_format($txt, 3, ".", ",");
+                return number_format($txt, 3, self::$dec_point, self::$thousands_sep);
             elseif ($pattern == "#,##0.0000")
-                return number_format($txt, 4, ".", ",");
+                return number_format($txt, 4, self::$dec_point, self::$thousands_sep);
             elseif ($pattern == "###0.0000")
-                return number_format($txt, 4, ".", "");
+                return number_format($txt, 4, self::$dec_point, "");
 
             // latin formats
-            elseif ($pattern == "#.##0")
+            elseif ($pattern == "#,##0")
                 return number_format($txt, 0, ".", ",");
             elseif ($pattern == "###0,0")
                 return number_format($txt, 1, ",", "");
@@ -520,9 +564,9 @@ class Report extends Element {
                 return ($txt < 0 ? "(" . number_format($txt, 2, ",", ".") . ")" : number_format($txt, 2, ",", "."));
             elseif ($pattern == "###0,000")
                 return number_format($txt, 3, ",", "");
-            elseif ($pattern == "#,##0,000")
+            elseif ($pattern == "#.##0,000")
                 return number_format($txt, 3, ",", ".");
-            elseif ($pattern == "#,##0,0000")
+            elseif ($pattern == "#.##0,0000")
                 return number_format($txt, 4, ",", ".");
             elseif ($pattern == "###0,0000")
                 return number_format($txt, 4, ",", "");
@@ -549,8 +593,12 @@ class Report extends Element {
                 return date("d/m/Y h:i a", strtotime($txt));
             elseif ($pattern == "dd/MM/yyyy HH.mm.ss" && $txt != "")
                 return date("d-m-Y H:i:s", strtotime($txt));
+            elseif (($pattern == "dd/MM/yyyy HH:mm" || $pattern == "dd/MM/yyyy HH.mm" || $pattern == "dd/MM/yyyy H:m") && $txt != "")
+                return date("d/m/Y H:i", strtotime($txt));
             elseif ($pattern == "H:m:s" && $txt != "")
                 return date("H:i:s", strtotime($txt));
+            elseif (($pattern == "H:m" || $pattern == "HH:mm" || $pattern == "H.m" || $pattern == "HH.mm") && $txt != "")
+                return date("H:i", strtotime($txt));
             elseif (($pattern == "dFyyyy") && $txt != "")
                 return date("d ", strtotime($txt)) . " de " . $nome_meses[date("n", strtotime($txt))] . " de " . date("Y", strtotime($txt));
             elseif (($pattern == "dFbyyyy") && $txt != "")
@@ -620,7 +668,7 @@ class Report extends Element {
             return (($rt) ? ($rt) : "Zero");
         }
     }
-
+    
     public function generate($obj = null) {
         //$this->parameter_handler($this->objElement, $param);
         //$this->variable_handler($this->objElement);
@@ -630,15 +678,64 @@ class Report extends Element {
             $this->dbData = $this->getDbData();
         }
         // exibe a tag
+        $instructions = JasperPHP\Instructions::setJasperObj($obj?$obj:$this);
         parent::generate($this);
+        //JasperPHP\Instructions::runInstructions();
+        //JasperPHP\Instructions::clearInstructrions();
         return $this->arrayVariable;
     }
 
     public function out() {
 
-        $instructions = JasperPHP\Pdf::setJasperObj($this);
-        JasperPHP\Pdf::runInstructions();
+        JasperPHP\Instructions::runInstructions();
         //$this->runInstructions($instructions);
+    }
+    public function addStyle($style){
+        //print_r($style);return;
+        $attributes = $style->attributes();
+        $key = $attributes['name'];            
+        $this->arrayStyles["{$key}"] = $style; // here you can trate all parameter of style
+    }
+    
+    public function getStyle($key){
+        if(isset($this->arrayStyles["{$key}"])){
+        return $this->arrayStyles["{$key}"];
+        }
+    }
+    public function applyStyle($key, &$reportElement, $rowData){
+        $style = $this->getStyle($key);
+        if($style){
+            //default
+            $attributes = $style->attributes();
+            if(isset($style->conditionalStyle)){ 
+                //percore os styles
+                foreach($style->conditionalStyle as $styleNew){                
+                    $expression = $styleNew->conditionExpression;             
+                    //echo $expression;
+                    $resultExpression = false;
+                    $expression = $this->get_expression($expression, $rowData);
+                    //echo 'if(' . $expression . '){$resultExpression=true;}<br/>';
+                    eval('if(' . $expression . '){$resultExpression=true;}'); 
+                    //echo $resultExpression."<br/>";
+                    if($resultExpression){
+                        //get definition style condicional
+                        $attributCondicional= $styleNew->style->attributes();
+                        $attributes = $attributCondicional;
+                        break;
+                        //var_dump($attributCondicional);  
+                    }      
+                }
+            }           
+           //change properties  
+            foreach($attributes as $key => $value){
+                //ignore
+                if(!in_array($key,array('name'))){
+                    //echo "{$key} - {$value}<br/>";    
+                    $reportElement[$key]=$value;                             
+                }   
+            }
+           
+        }        
     }
 
 }

@@ -10,10 +10,11 @@ namespace JasperPHP;
 	* 
 	* 2015.03.11 -- criação
 	**/
+	use JasperPHP;
 	class Element
 	{
 		private $properties;    // propriedades da TAG 
-		protected $objElement;
+		public $objElement;
 		public $children;
 
 
@@ -172,6 +173,8 @@ namespace JasperPHP;
 					if (is_object($child))
 					{
 						$child->generate($obj);
+						//JasperPHP\Instructions::runInstructions();
+        				//JasperPHP\Instructions::clearInstructrions();
 					}
 				}
 				// fecha a tag

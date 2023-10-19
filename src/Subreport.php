@@ -23,6 +23,20 @@ class Subreport extends Element
         $this->returnValues = array();
         $row = is_object($obj) ? $_POST : $obj[1];
         $obj = is_array($obj) ? $obj[0] : $obj;
+        
+        
+        $print_expression_result = false;
+        $printWhenExpression = (string)$this->objElement->reportElement->printWhenExpression;
+        if ($printWhenExpression != '') {
+            $printWhenExpression = $obj->get_expression($printWhenExpression, $row);
+            eval('if(' . $printWhenExpression . '){$print_expression_result=true;}');
+        } else {
+            $print_expression_result = true;
+        }
+        if ($print_expression_result !== true) {
+            return;
+        }
+        
         $xmlFile = (string) $this->objElement->subreportExpression;
         $xmlFile = str_ireplace(array('"'), array(''), $xmlFile);
         //$rowArray =is_array($row)?$row:get_object_vars($row);
@@ -39,7 +53,12 @@ class Subreport extends Element
         //$GLOBALS['reports'][$xmlFile] = (array_key_exists($xmlFile, $GLOBALS['reports'])) ? $GLOBALS['reports'][$xmlFile] : new JasperPHP\Report($xmlFile);
         $report = new JasperPHP\Report($xmlFile, $newParameters); //$GLOBALS['reports'][$xmlFile];
         //$this->children= array($report);
-        $report->generate();
+        
+        if ( preg_match("#^\\\$F{#", $this->objElement->dataSourceExpression) === 1 ) {
+            $report->dbData = $obj->get_expression($this->objElement->dataSourceExpression,$row,null);
+        }
+
+        $report->generate($obj?$obj:array());
         foreach ($this->objElement->returnValue as $r) {
             $this->returnValues[] = $r;
         }

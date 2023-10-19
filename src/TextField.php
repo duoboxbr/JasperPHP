@@ -20,7 +20,7 @@ class TextField extends Element {
         $rowData = is_array($obj) ? $obj[1] : null;
         $data = $this->objElement;
         $obj = is_array($obj) ? $obj[0] : $obj;
-        $text = $this->objElement->textFieldExpression;
+        $text = (string) $this->objElement->textFieldExpression;
         $arrayText = explode("+", $text);
         $align = "L";
         $fill = 0;
@@ -38,11 +38,19 @@ class TextField extends Element {
         $writeHTML = '';
         $isPrintRepeatedValues = '';
         $valign = '';
-        $data->hyperlinkReferenceExpression = $data->hyperlinkReferenceExpression;
+        if (isset($data->hyperlinkReferenceExpression)) {
+            $data->hyperlinkReferenceExpression = $obj->get_expression($data->hyperlinkReferenceExpression,$rowData,false,$this);
+        }
         $multiCell = false;
         //SimpleXML object (1 item) [0] // ->codeExpression[0] ->attributes('xsi', true) ->schemaLocation ->attributes('', true) ->type ->drawText ->checksumRequired barbecue:
         //SimpleXMLElement Object ( [@attributes] => Array ( [hyperlinkType] => Reference [hyperlinkTarget] => Blank ) [reportElement] => SimpleX
         //print_r( $data["@attributes"]);
+
+        //apply style formatting
+        if(isset($data->reportElement['style'])){
+        $name = $data->reportElement['style'];
+        $obj->applyStyle($name, $data->reportElement, $rowData);
+        }
 
         if (isset($data->reportElement["forecolor"])) {
             $textcolor = array(
@@ -61,64 +69,18 @@ class TextField extends Element {
         if ($data->reportElement["mode"] == "Opaque") {
             $fill = 1;
         }
-        if (isset($data["isStretchWithOverflow"]) && $data["isStretchWithOverflow"] == "true") {
+        if ((isset($this->textAdjust) && $this->textAdjust == "StretchHeight") || (isset($this->isStretchWithOverflow) && $this->isStretchWithOverflow == "true")) {
             $stretchoverflow = "true";
         }
         if (isset($data->reportElement["isPrintWhenDetailOverflows"]) && $data->reportElement["isPrintWhenDetailOverflows"] == "true") {
             $printoverflow = "true";
         }
+        $box = array();
         if (isset($data->box)) {
-            $borderset = "";
-            if ($data->box->topPen["lineWidth"] > 0) {
-                $borderset .= "T";
-            }
-            if ($data->box->leftPen["lineWidth"] > 0) {
-                $borderset .= "L";
-            }
-            if ($data->box->bottomPen["lineWidth"] > 0) {
-                $borderset .= "B";
-            }
-            if ($data->box->rightPen["lineWidth"] > 0) {
-                $borderset .= "R";
-            }
-            if (isset($data->box->pen["lineColor"])) {
-                $drawcolor = array(
-                    "r" => hexdec(substr($data->box->pen["lineColor"], 1, 2)),
-                    "g" => hexdec(substr($data->box->pen["lineColor"], 3, 2)),
-                    "b" => hexdec(substr($data->box->pen["lineColor"], 5, 2))
-                );
-            }
-            $dash = "";
-            if (isset($data->box->pen["lineStyle"])) {
-                if ($data->box->pen["lineStyle"] == "Dotted") {
-                    $dash = "0,1";
-                } elseif ($data->box->pen["lineStyle"] == "Dashed") {
-                    $dash = "4,2";
-                }
-
-
-                //Dotted Dashed
-            }
-
-            $border = array(
-                $borderset => array(
-                    'width' => $data->box->pen["lineWidth"] + 0,
-                    'cap' => 'butt',
-                    'join' => 'miter',
-                    'dash' => $dash,
-                    'phase' => 0,
-                    'color' => $drawcolor
-                )
-            );
-            //array($borderset=>array('width'=>$data->box->pen["lineWidth"],
-            //'cap'=>'butt'(butt, round, square),'join'=>'miter' (miter, round,bevel),
-            //'dash'=>2 ("2,1","2"),
-            //  'colour'=>array(110,20,30)  ));
-            //&&$data->box->pen["lineWidth"]>0
-            //border can be array('LTRB' => array('width' => 2, 'cap' => 'butt', 'join' => 'miter', 'dash' => 0, 'color' => array(0, 0, 0))
-            //elseif()
+            $border = StaticText::formatBox($data->box);
+            $box = $data->box;
         }
-        if (isset($data->reportElement["key"])) {
+        if (isset($data->reportElement["key"]) && !empty($data->reportElement["key"])) {
             $height = $fontsize;
         }
         if (isset($data->textElement["textAlignment"])) {
@@ -155,15 +117,32 @@ class TextField extends Element {
         if (isset($data->textElement->font["isUnderline"]) && $data->textElement->font["isUnderline"] == "true") {
             $fontstyle = $fontstyle . "U";
         }
+        $lineHeightRatio = 1;
+        if (isset($data->textElement->paragraph["lineSpacing"])) {
+            switch ($data->textElement->paragraph["lineSpacing"]) {
+                case "1_1_2":
+                    $lineHeightRatio = 1.5;
+                    break;
+                case "Double":
+                    $lineHeightRatio = 1.5;
+                    break;
+                case "Proportional":
+                    $lineHeightRatio = $data->textElement->paragraph["lineSpacingSize"];
+                    break;
+            }
+        }
+        JasperPHP\Instructions::addInstruction(array(
+            "type" => "setCellHeightRatio",
+            "ratio" => $lineHeightRatio
+        ));
 
-
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetXY",
             "x" => $data->reportElement["x"] + 0,
             "y" => $data->reportElement["y"] + 0,
             "hidden_type" => "SetXY"
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetTextColor",
             "forecolor" => $data->reportElement["forecolor"],
             "r" => $textcolor["r"],
@@ -171,14 +150,14 @@ class TextField extends Element {
             "b" => $textcolor["b"],
             "hidden_type" => "textcolor"
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetDrawColor",
             "r" => $drawcolor["r"],
             "g" => $drawcolor["g"],
             "b" => $drawcolor["b"],
             "hidden_type" => "drawcolor"
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetFillColor",
             "backcolor" => $data->reportElement["backcolor"] . "",
             "r" => $fillcolor["r"],
@@ -187,10 +166,10 @@ class TextField extends Element {
             "hidden_type" => "fillcolor",
             "fill" => $fill
         ));
-        JasperPHP\Pdf::addInstruction(array(
+        JasperPHP\Instructions::addInstruction(array(
             "type" => "SetFont",
             "font" => $font . "",
-            "pdfFontName" => $data->textElement->font["pdfFontName"] . "",
+            "pdfFontName" => $data->textElement->font? $data->textElement->font["pdfFontName"] . "":"",
             "fontstyle" => $fontstyle . "",
             "fontsize" => $fontsize + 0,
             "hidden_type" => "font"
@@ -207,44 +186,27 @@ class TextField extends Element {
             case 'new java.util.Date()':
                 $text = date("Y-m-d H:i:s");
                 break;
-            case '"Page "+$V{PAGE_NUMBER}+" of"':
-                $text = 'Page ' . JasperPHP\Pdf::getPageNo() . ' of';
-                break;
-            case '$V{PAGE_NUMBER}':
-                if (isset($data["evaluationTime"]) && $data["evaluationTime"] == "Report" && !isset($rowData['counter'])) {
-                    $text = '{:ptp:}';
-                } else {
-                    $text = '';
-                }
-                break;
-            case '" " + $V{PAGE_NUMBER}':
-                $text = ' {:ptp:}';
-                break;
-
-            case '$V{CURRENT_PAGE_NUMBER}':
-                $text = $rowData['counter'] == true ? JasperPHP\Pdf::getPageNo() : '';
-                break;
-
             default:
-                preg_match_all("/P{(\w+)}/", $text, $matchesP);
-                if ($matchesP) {
-                    foreach ($matchesP[1] as $macthP) {
-                        $text = str_ireplace(array('$P{' . $macthP . '}'), array(($obj->arrayParameter[$macthP])), $text);
-                    }
-                }
-                preg_match_all("/V{(\w+)}/", $text, $matchesV);
-                if ($matchesV) {
-                    foreach ($matchesV[1] as $macthV) {
-                        $text = $obj->getValOfVariable($macthV, $text);
-                    }
-                }
-                preg_match_all("/F{[^}]*}/", $text, $matchesF);
-                if ($matchesF) {
-                    foreach ($matchesF[0] as $macthF) {
-                        $macth = str_ireplace(array("F{", "}"), "", $macthF);
-                        $text = $obj->getValOfField($macth, $rowData, $text, $writeHTML);
-                    }
-                }
+                $text = $obj->get_expression($text,$rowData,$writeHTML,$this);
+//                preg_match_all("/P{(\w+)}/", $text, $matchesP);
+//                if ($matchesP) {
+//                    foreach ($matchesP[1] as $macthP) {
+//                        $text = str_ireplace(array('$P{' . $macthP . '}'), array(($obj->arrayParameter[$macthP])), $text);
+//                    }
+//                }
+//                preg_match_all("/V{(\w+)}/", $text, $matchesV);
+//                if ($matchesV) {
+//                    foreach ($matchesV[1] as $macthV) {
+//                        $text = $obj->getValOfVariable($macthV, $text);
+//                    }
+//                }
+//                preg_match_all("/F{[^}]*}/", $text, $matchesF);
+//                if ($matchesF) {
+//                    foreach ($matchesF[0] as $macthF) {
+//                        $macth = str_ireplace(array("F{", "}"), "", $macthF);
+//                        $text = $obj->getValOfField($macth, $rowData, $text, $writeHTML);
+//                    }
+//                }
 
                 break;
         }
@@ -254,34 +216,16 @@ class TextField extends Element {
         } elseif ($data->textElement['markup'] == 'rtf') {
             $multiCell = true;
         } else {
-            $text = str_ireplace(array('"+', '+"', '"'), array('', '', ''), $text);
+            $text = str_ireplace(array('"+','" +', '+"', '+ "', '"','\n'), array('', '', ''), $text);
         }
         if (isset($data->reportElement["isPrintRepeatedValues"]))
             $isPrintRepeatedValues = $data->reportElement["isPrintRepeatedValues"];
 
-        if ($printoverflow == "true") {
+        if ($printoverflow == "true" || $stretchoverflow == "true") {
             $text = str_ireplace(array('+', '+', '"'), array('', '', ''), $text);
         }
-        $printWhenExpression = $data->reportElement->printWhenExpression;
-        preg_match_all("/P{(\w+)}/", $printWhenExpression, $matchesP);
-        preg_match_all("/F{(\w+)}/", $printWhenExpression, $matchesF);
-        preg_match_all("/V{(\w+)}/", $printWhenExpression, $matchesV);
-        if ($matchesP > 0) {
-            foreach ($matchesP[1] as $macthP) {
-                $printWhenExpression = str_ireplace(array('$P{' . $macthP . '}', '"'), array($obj->arrayParameter[$macthP], ''), $printWhenExpression);
-            }
-        }if ($matchesF > 0) {
-            foreach ($matchesF[1] as $macthF) {
-                $printWhenExpression = $obj->getValOfField($macthF, $rowData, $printWhenExpression);
-            }
-        }
-        if ($matchesV > 0) {
-            foreach ($matchesV[1] as $macthV) {
-                $printWhenExpression = $obj->getValOfVariable($macthV, $printWhenExpression);
-            }
-        }
-        $textAdjust = isset($this->textAdjust) ? (string) $this->textAdjust : null;
-        JasperPHP\Pdf::addInstruction(array("type" => "MultiCell", "width" => $data->reportElement["width"] + 0, "height" => $height + 0, "txt" => $text . "",
+        $printWhenExpression = $obj->get_expression($data->reportElement->printWhenExpression, $rowData);
+        JasperPHP\Instructions::addInstruction(array("type" => "MultiCell", "width" => $data->reportElement["width"] + 0, "height" => $height + 0, "txt" => $text . "",
             "border" => $border, "align" => $align, "fill" => $fill,
             "hidden_type" => "field", "soverflow" => $stretchoverflow, "poverflow" => $printoverflow,
             "printWhenExpression" => $printWhenExpression . "",
@@ -292,6 +236,7 @@ class TextField extends Element {
             "textAdjust" => $textAdjust,
             "rotation" => $rotation,
             "valign" => $valign,
+            "box"=>$box,
             "x" => $data->reportElement["x"] + 0, "y" => $data->reportElement["y"] + 0));
 
         //$this->checkoverflow($pointer);

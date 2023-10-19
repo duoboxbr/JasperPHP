@@ -25,6 +25,12 @@ class ComponentElement extends Element
         $width=$data->reportElement["width"];
         $height=$data->reportElement["height"];
 
+        //table =========================================
+		$jrs = $data->children('jr',true);	
+		if(isset($jrs->table)){
+		$table = new JasperPHP\Table($jrs->table);
+		$table->generate(array($obj,$rowData,$data->reportElement));
+		}//end table
         
         //simplexml_tree( $data);        
         // echo "<br/><br/>";
@@ -32,28 +38,8 @@ class ComponentElement extends Element
         //echo "<br/><br/>";
         //SimpleXML object (1 item) [0] // ->codeExpression[0] ->attributes('xsi', true) ->schemaLocation ->attributes('', true) ->type ->drawText ->checksumRequired barbecue: 
         foreach($data->children('jr',true) as $barcodetype =>$content){
-            $text = $content->codeExpression;
-
-            preg_match_all("/P{(\w+)}/",$text ,$matchesP);
-            if($matchesP){
-                foreach($matchesP[1] as $macthP){
-                    $text = str_ireplace(array('$P{'.$macthP.'}'),array(($obj->arrayParameter[$macthP])),$text); 
-                } 
-            }
-            preg_match_all("/V{(\w+)}/",$text ,$matchesV);
-            if($matchesV){
-                foreach($matchesV[1] as $macthV){
-                    $text = $obj->getValOfVariable($macthV,$text); 
-                }
-
-            }
-            preg_match_all("/F{(\w+)}/",$text ,$matchesF);
-            if($matchesF){
-                foreach($matchesF[1] as $macthF){
-                    $text = $obj->getValOfField($macthF,$rowData,$text);
-                }
-            }
-
+            $text = $obj->get_expression($content->codeExpression,$rowData,false,$this);
+            
             $barcodemethod="";
             $textposition="";
             if($barcodetype=="barbecue"){
@@ -82,20 +68,8 @@ class ComponentElement extends Element
             if($modulewidth=="")
                 $modulewidth=1;
             //                            echo "Barcode: $code,position: $textposition <br/><br/>";
-            JasperPHP\Pdf::addInstruction(array("type"=>"Barcode","barcodetype"=>$barcodemethod,"x"=>$x,"y"=>$y,"width"=>$width,"height"=>$height,'textposition'=>$textposition,'code'=>$code,'modulewidth'=>$modulewidth));
+            JasperPHP\Instructions::addInstruction(array("type"=>"Barcode","barcodetype"=>$barcodemethod,"x"=>$x,"y"=>$y,"width"=>$width,"height"=>$height,'textposition'=>$textposition,'code'=>$code,'modulewidth'=>$modulewidth));
 
-            /*
-            <jr:barbecue xmlns:jr="http://jasperreports.sourceforge.net/jasperreports/components" 
-            * xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports/components http://jasperreports.sourceforge.net/xsd/components.xsd" 
-            * type="2of7" drawText="false" checksumRequired="false">
-            <jr:codeExpression><![CDATA["1234"]]></jr:codeExpression>
-            </jr:barbecue>
-            * <jr:Code128 xmlns:jr="http://jasperreports.sourceforge.net/jasperreports/components" 
-            * xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports/components http://jasperreports.sourceforge.net/xsd/components.xsd"
-            *  textPosition="bottom">
-            <jr:codeExpression><![CDATA[]]></jr:codeExpression>
-            </jr:Code128>
-            */
 
 
         }
