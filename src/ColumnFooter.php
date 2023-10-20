@@ -19,10 +19,10 @@ class ColumnFooter extends Element {
     public function generate($obj = null) {
         $rowIndex = 0;
         $row = $obj->lastRowData;
-        if (!$row) {return;}
-        //if (!$row) {
-        //    $row = array();
-        //}
+//        if (!$row) {return;}
+        if (!$row) {
+            $row = array();
+        }
         $obj = is_array($obj) ? $obj[0] : $obj;
         foreach ($this->children as $child) {
             // se for objeto

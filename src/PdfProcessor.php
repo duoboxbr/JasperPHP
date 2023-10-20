@@ -557,7 +557,7 @@ class PdfProcessor {
                 if ($arraydata['multiCell'] === true) {
 
                     $pdf->MultiCell(
-                            $arraydata["width"], $arraydata["height"], $text, $arraydata["border"], $arraydata["align"], 0, 0, $x, $y, true, 0);
+                            $w, $h, $text, $arraydata["border"], $arraydata["align"], $arraydata["fill"], 0, $x, $y, true, 0, false, true, $h, $arraydata["valign"]);
 //                $pdf->MultiCell(
 //                    $w, $h, $text, $arraydata["border"], $arraydata["align"], $arraydata["fill"], 0, $x, $y, true, 0, false, true, $h, $arraydata["valign"]);
 //                if (isset($arraydata["link"]) && !empty($arraydata["link"])) {
@@ -569,7 +569,10 @@ class PdfProcessor {
                         $stretch = 1;
                         $cellText = $arraydata['txt'];
                     }
-                    $pdf->Cell($arraydata["width"], $arraydata["height"], $cellText, $arraydata["border"], "", $arraydata["align"], $arraydata["fill"], $arraydata["link"], $stretch, true, "T", $arraydata["valign"]);
+                    $pdf->Cell($w, $h, $cellText, $arraydata["border"], "", $arraydata["align"], $arraydata["fill"], $arraydata["link"], $stretch, true, "T", $arraydata["valign"]);
+                }
+                if (isset($arraydata["link"]) && !empty($arraydata["link"])) {
+                    $pdf->Link($x, $y, $arraydata["width"], $arraydata["height"], $arraydata["link"]);
                 }
             } elseif ($arraydata["poverflow"] == "true" || $arraydata["soverflow"] == "true") {
                 if ($arraydata["valign"] == "C")

@@ -225,6 +225,7 @@ class TextField extends Element {
             $text = str_ireplace(array('+', '+', '"'), array('', '', ''), $text);
         }
         $printWhenExpression = $obj->get_expression($data->reportElement->printWhenExpression, $rowData);
+        $textAdjust = isset($this->textAdjust) ? (string) $this->textAdjust : null;
         JasperPHP\Instructions::addInstruction(array("type" => "MultiCell", "width" => $data->reportElement["width"] + 0, "height" => $height + 0, "txt" => $text . "",
             "border" => $border, "align" => $align, "fill" => $fill,
             "hidden_type" => "field", "soverflow" => $stretchoverflow, "poverflow" => $printoverflow,

@@ -45,9 +45,10 @@ class Report extends Element {
             $xmlFile = file_get_contents(self::$defaultFolder . DIRECTORY_SEPARATOR . $xmlFile);
         } elseif (file_exists($xmlFile)) {
             $xmlFile = file_get_contents($xmlFile);
-        }else{
-            throw new Exception("File {$xmlFile} not found!!");
         }
+//        else{
+//            throw new Exception("File {$xmlFile} not found!!");
+//        }
         $keyword = "<queryString>
         <![CDATA[";
         $xmlFile = str_replace($keyword, "<queryString><![CDATA[", $xmlFile);
