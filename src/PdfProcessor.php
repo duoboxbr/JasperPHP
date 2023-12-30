@@ -356,6 +356,11 @@ class PdfProcessor {
         else
             $withtext = true;
 
+        $errorCorrectionLevel = 'L';
+        if (in_array($data['errorCorrectionLevel'], ['L','M','Q','H'])) {
+            $errorCorrectionLevel = $data['errorCorrectionLevel'];
+        }
+
         $style = array(
             'border' => false,
             'vpadding' => 'auto',
@@ -415,12 +420,12 @@ class PdfProcessor {
 
                     $code = $this->right($code, strlen($code) - 3);
 
-                    $pdf->write2DBarcode($code, 'QRCODE', $x, $y, $width, $height, $style, 'N');
+                    $pdf->write2DBarcode($code, 'QRCODE,' . $errorCorrectionLevel, $x, $y, $width, $height, $style, 'N');
                 } else
                     $pdf->write2DBarcode($code, 'DATAMATRIX', $x, $y, $width, $height, $style, 'N');
                 break;
             case "QRCODE":
-                $pdf->write2DBarcode($code, 'QRCODE', $x, $y, $width, $height, $style, 'N');
+                $pdf->write2DBarcode($code, 'QRCODE,' . $errorCorrectionLevel, $x, $y, $width, $height, $style, 'N');
                 break;
             case "CODE128":
 

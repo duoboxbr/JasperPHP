@@ -24,6 +24,7 @@ class ComponentElement extends Element
         $y=$data->reportElement["y"];
         $width=$data->reportElement["width"];
         $height=$data->reportElement["height"];
+        $errorCorrectionLevel = '';
 
         //table =========================================
 		$jrs = $data->children('jr',true);	
@@ -61,14 +62,14 @@ class ComponentElement extends Element
                 //$content['textPosition'];
                 $code=$text;
                 $modulewidth=$content->attributes('', true)->moduleWidth;
-
+                $errorCorrectionLevel = $content->attributes('', true)->errorCorrectionLevel;
 
 
             }
             if($modulewidth=="")
                 $modulewidth=1;
             //                            echo "Barcode: $code,position: $textposition <br/><br/>";
-            JasperPHP\Instructions::addInstruction(array("type"=>"Barcode","barcodetype"=>$barcodemethod,"x"=>$x,"y"=>$y,"width"=>$width,"height"=>$height,'textposition'=>$textposition,'code'=>$code,'modulewidth'=>$modulewidth));
+            JasperPHP\Instructions::addInstruction(array("type"=>"Barcode","barcodetype"=>$barcodemethod,"x"=>$x,"y"=>$y,"width"=>$width,"height"=>$height,'textposition'=>$textposition,'code'=>$code,'modulewidth'=>$modulewidth,'errorCorrectionLevel'=>$errorCorrectionLevel));
 
 
 
