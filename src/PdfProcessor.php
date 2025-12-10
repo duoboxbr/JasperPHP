@@ -97,8 +97,8 @@ class PdfProcessor {
     }
 
     public function SetY_axis($arraydata) {
-        if ((JasperPHP\Instructions::$y_axis + $arraydata['y_axis']) <= JasperPHP\Instructions::$arrayPageSetting["pageHeight"]) {
-            JasperPHP\Instructions::$y_axis = JasperPHP\Instructions::$y_axis + $arraydata['y_axis'];
+        if ((JasperPHP\Instructions::$y_axis + ($arraydata['y_axis'] ?: 0)) <= JasperPHP\Instructions::$arrayPageSetting["pageHeight"]) {
+            JasperPHP\Instructions::$y_axis = JasperPHP\Instructions::$y_axis + ($arraydata['y_axis'] ?: 0);
         }
     }
 
